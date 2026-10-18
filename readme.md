@@ -6,6 +6,162 @@ Prinsip utama sistem ini: **semua perubahan data produk oleh owner baru berlaku 
 
 ---
 
+## Cara Menjalankan (Lokal)
+
+Semua komponen berjalan di Docker. Tidak perlu menginstal Node.js, Python, Go, PostgreSQL, Redis, atau RabbitMQ di komputer.
+
+### Prasyarat
+
+- **Docker** dengan **Docker Compose v2** (Docker Desktop di Windows/macOS, atau Docker Engine di Linux). Cek dengan `docker compose version`.
+- Port berikut belum dipakai aplikasi lain: `8080`, `3000`, `3001`, `5432`, `6379`, `5672`, `15672`. Kalau ada yang bentrok, ubah port-nya di `.env` (lihat [Konfigurasi](#konfigurasi)).
+
+### Langkah
+
+```bash
+git clone https://github.com/ROMBombo/WaroenkQu.git
+cd WaroenkQu
+docker compose up -d --build
+```
+
+Build pertama butuh beberapa menit karena semua image dibuat dari source. Cek status sampai semua service `healthy` (`catalog-publisher` cukup `Up`):
+
+```bash
+docker compose ps
+```
+
+Urutan start diatur otomatis: PostgreSQL, Redis, RabbitMQ → API Services (menjalankan migration & seed) → Catalog Publisher & Notification Service → Webapp. Setelah semuanya jalan, buka **http://localhost:8080**.
+
+### Alamat layanan
+
+| Layanan | Alamat | Keterangan |
+|---------|--------|------------|
+| Webapp | http://localhost:8080 | Aplikasi owner & kasir |
+| API Services | http://localhost:3000 | REST API (`/v1/...`) |
+| Swagger | http://localhost:3000/docs | Dokumentasi & uji coba API |
+| Notification Service | ws://localhost:3001/ws | WebSocket notifikasi (lihat [WebSocket](#websocket)) |
+| RabbitMQ Management | http://localhost:15672 | Login `waroenkqu` / `waroenkqu_local` |
+| PostgreSQL | `localhost:5432` | Database `waroenkqu`, user `waroenkqu`, password `waroenkqu_local` |
+| Redis | `localhost:6379` | Key `catalog:current` |
+
+### Akun
+
+Akun dibuat otomatis oleh seed `api-services/seeds/0002_users.sql`:
+
+| Username | Password | Role |
+|----------|----------|------|
+| `owner` | `owner123` | Owner |
+| `kasir1` | `kasir123` | Kasir |
+| `kasir2` | `kasir123` | Kasir |
+
+Database awalnya **tidak berisi produk**. Produk dibuat lewat webapp atau API sebagai bagian dari pengujian.
+
+### Konfigurasi
+
+Semua konfigurasi ada di file `.env` di root repo. File ini sengaja ikut di-commit karena isinya hanya nilai dummy untuk lokal. **Jangan dipakai di production.**
+
+| Variable | Default | Keterangan |
+|----------|---------|------------|
+| `CATALOG_PUBLISH_INTERVAL` | `300` | Interval publish katalog dalam detik. Mewakili **1 hari**. Perkecil (misalnya `30`) supaya "hari berikutnya" cepat terjadi saat pengujian |
+| `JWT_ACCESS_EXPIRES_IN` | `30m` | Masa berlaku access token |
+| `JWT_REFRESH_EXPIRES_IN` | `7d` | Masa berlaku refresh token |
+| `OUTBOX_POLL_INTERVAL` | `1` | Interval outbox worker mengecek pesan yang belum terkirim (detik) |
+| `WEBAPP_PORT`, `API_PORT`, `NOTIFICATION_PORT`, `POSTGRES_PORT`, `REDIS_PORT`, `RABBITMQ_PORT`, `RABBITMQ_MANAGEMENT_PORT` | lihat `.env` | Port di komputer host |
+
+Setelah mengubah `.env`, jalankan lagi `docker compose up -d`. Compose hanya membuat ulang container yang konfigurasinya berubah.
+
+### Perintah yang sering dipakai
+
+| Kebutuhan | Perintah |
+|-----------|----------|
+| Melihat log semua service | `docker compose logs -f` |
+| Melihat log satu service | `docker compose logs -f api-services` |
+| Mematikan satu service (simulasi gangguan) | `docker compose stop rabbitmq` |
+| Menyalakan lagi | `docker compose start rabbitmq` |
+| Menghentikan semua (data tetap ada) | `docker compose down` |
+| **Reset semua data** (database, Redis, RabbitMQ) | `docker compose down -v` lalu `docker compose up -d` |
+| Build ulang setelah mengubah kode | `docker compose up -d --build` |
+
+### Troubleshooting
+
+- **Port sudah dipakai** (`bind: address already in use`): ubah port terkait di `.env`, lalu `docker compose up -d`.
+- **Service tidak pernah `healthy`**: lihat penyebabnya dengan `docker compose logs <nama-service>`. Kalau migration gagal, API Services berhenti dan service lain tidak ikut start.
+- **Data ingin dikembalikan ke kondisi awal**: `docker compose down -v`, lalu `docker compose up -d`.
+
+### Aturan pengembangan
+
+- Schema database hanya diubah lewat file baru di `api-services/migrations/` (misalnya `0007_xxx.sql`). **File migration yang sudah pernah jalan jangan diedit**, karena tidak akan dijalankan ulang.
+- ORM di semua service (TypeORM, SQLAlchemy, GORM) hanya untuk baca/tulis data. **Fitur ORM yang mengubah schema** (`synchronize`, `create_all`, `AutoMigrate`) **tidak boleh dipakai**.
+- File di `api-services/seeds/` dijalankan setiap API Services start, jadi harus idempotent (aman dijalankan berulang kali).
+
+---
+
+## Cara Penggunaan
+
+### Lewat webapp
+
+Buka http://localhost:8080 lalu login dengan salah satu [akun](#akun).
+
+**Sebagai owner** (`owner` / `owner123`):
+1. **Produk → Tambah produk.** Isi nama, harga, stok awal, dan stok minimum. Produk tampil dengan label **Menunggu publish** dan baru bisa dijual kasir setelah publish katalog berikutnya. Waktunya ditampilkan di pesan setelah menyimpan.
+2. **Produk → Detail** untuk:
+   - mengubah nama, harga, atau stok minimum (berlaku setelah publish berikutnya);
+   - menambah atau mengurangi stok (langsung berlaku, pengurangan wajib diberi catatan);
+   - mengaktifkan, menonaktifkan, atau menghapus produk;
+   - melihat history perubahan produk.
+3. **Katalog** menampilkan waktu publish terakhir dan berikutnya, serta history dan isi setiap katalog.
+4. **Lonceng** di kanan atas menampilkan notifikasi stok menipis secara realtime. **Notifikasi** berisi daftar lengkap dan tombol **Tandai dibaca**.
+5. **Transaksi** menampilkan transaksi dari semua kasir.
+
+**Sebagai kasir** (`kasir1` / `kasir123`):
+1. Setelah login, langsung terbuka halaman **Kasir**. Katalog dimuat sekali saat halaman dibuka.
+2. Pilih produk lewat kolom pencarian, isi jumlah, lalu **Tambah produk** untuk baris berikutnya. Produk yang sudah dipilih tidak muncul lagi di baris lain.
+3. Isi **Uang dibayar**. Kembalian dihitung otomatis, dan tombol **Bayar** tidak aktif kalau uang kurang dari total.
+4. Setelah bayar, struk menampilkan total, uang dibayar, dan kembalian.
+5. Kalau katalog sudah diperbarui sejak halaman dibuka, transaksi ditolak, katalog dimuat ulang otomatis, dan kasir diminta mengecek ulang sebelum bayar lagi.
+6. **Transaksi** menampilkan transaksi yang dibuat kasir tersebut.
+
+### Mensimulasikan "hari berikutnya"
+
+Perubahan produk baru berlaku setelah publish katalog, yang terjadi setiap `CATALOG_PUBLISH_INTERVAL` detik. Supaya tidak perlu menunggu lama saat menguji:
+
+1. Ubah `CATALOG_PUBLISH_INTERVAL=30` di `.env`.
+2. Jalankan `docker compose up -d`.
+3. Pantau waktu publish berikutnya di halaman **Katalog**, atau lewat `GET /v1/catalog-management/publish-info`.
+
+### Lewat API (Swagger)
+
+1. Buka http://localhost:3000/docs.
+2. Jalankan `POST /v1/auth/login` dengan body `{ "username": "owner", "password": "owner123" }`, lalu salin `data.access_token` dari response.
+3. Klik **Authorize**, tempel access token, lalu endpoint lain bisa dicoba langsung.
+
+Contoh dengan curl:
+
+```bash
+# Login
+curl -s -X POST http://localhost:3000/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username":"owner","password":"owner123"}'
+
+# Panggil endpoint dengan access token dari response login
+curl -s http://localhost:3000/v1/product-management \
+  -H "Authorization: Bearer <access_token>"
+```
+
+### Lewat WebSocket
+
+Hubungkan client WebSocket ke `ws://localhost:3001/ws?access_token=<access_token owner>`. Setiap kali ada notifikasi stok menipis baru, server mengirim event `notification.created`. Format event dan aturan koneksinya ada di bagian [WebSocket](#websocket).
+
+### Melihat data di balik layar
+
+| Yang ingin dilihat | Caranya |
+|--------------------|---------|
+| Isi tabel database | `docker compose exec postgres psql -U waroenkqu -d waroenkqu`, lalu misalnya `SELECT * FROM products;` |
+| Katalog yang berlaku di Redis | `docker compose exec redis redis-cli GET catalog:current` |
+| Pesan di queue `stock.low` | RabbitMQ Management → **Queues** → `stock.low` |
+| Pesan yang belum terkirim ke RabbitMQ | `SELECT * FROM outbox_messages WHERE status = 'PENDING';` |
+
+---
+
 ## Arsitektur
 
 ```
