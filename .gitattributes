@@ -1,0 +1,13 @@
+# Semua file teks memakai LF supaya script dan Dockerfile tetap jalan di container,
+# walaupun repo di-clone di Windows.
+* text=auto eol=lf
+
+# File biner
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.webp binary
+*.woff binary
+*.woff2 binary
