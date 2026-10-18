@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=75"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "catalog-publisher"
+version = "0.1.0"
+description = "WaroenkQu Catalog Publisher: menyalin produk aktif dari PostgreSQL menjadi katalog di Redis secara berkala"
+requires-python = ">=3.12"
+dependencies = [
+    "SQLAlchemy==2.0.36",
+    "psycopg[binary]==3.2.3",
+    "redis==5.2.1",
+]
+
+[project.scripts]
+catalog-publisher = "catalog_publisher.__main__:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
