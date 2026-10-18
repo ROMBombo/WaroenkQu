@@ -146,6 +146,7 @@ Ketentuan umum:
 - Request dan response memakai JSON dengan nama field snake_case.
 - Response sukses selalu berbentuk `{ "data": ..., "meta": ... }`. `meta` hanya ada di list (info pagination) dan di perubahan produk (`effective_at`).
 - Response error selalu berbentuk `{ "error": { "code", "message", "details" } }`. `details` berisi info tambahan, misalnya daftar field yang tidak valid.
+- Untuk status 401, 403, 500, dan 503, serta error dari framework (JSON rusak, route tidak ada, body terlalu besar), `message` selalu teks standar HTTP (`Unauthorized`, `Forbidden`, `Internal Server Error`, `Service Unavailable`, dst.) tanpa `details`. Alasan detailnya sengaja tidak dikirim ke client. `code` tetap menunjukkan jenis error-nya.
 - Field yang tidak dikenal di body request ditolak dengan `400`, misalnya `stock` di body PUT produk.
 - Field waktu di response memakai format ISO 8601 dengan offset `+07:00`, kecuali `publish-info` yang memakai format tampilan dd-mm-yyyy hh:mm:ss.
 - Detail request, response, dan pagination tiap endpoint ada di dokumentasi Swagger: `http://localhost:3000/docs`.
@@ -228,6 +229,8 @@ Ketentuan umum:
 | 422 | `PRODUCT_NOT_IN_CATALOG` | Produk di transaksi tidak ada di katalog Redis |
 | 422 | `INSUFFICIENT_STOCK` | Stok tidak cukup saat transaksi atau saat kurang stok |
 | 404 | `CATALOG_NOT_FOUND` | History katalog dengan ID tersebut tidak ada |
+| 413 | `PAYLOAD_TOO_LARGE` | Body request terlalu besar |
+| 500 | `INTERNAL_SERVER_ERROR` | Error tak terduga di server |
 | 503 | `CATALOG_NOT_AVAILABLE` | Katalog belum ada di Redis (Catalog Publisher belum pernah berjalan) |
 
 #### Outbox worker
@@ -413,7 +416,7 @@ Contoh isi kolom `products`:
 - Waktu publish berikutnya (`effective_at`) dihitung dari `published_at` terakhir + `CATALOG_PUBLISH_INTERVAL`.
 
 #### Tabel `users`
-Akun yang bisa login ke webapp. Dibuat lewat seed data (akun owner dan kasir untuk pengujian disediakan terpisah).
+Akun yang bisa login ke webapp. Akun owner dan kasir untuk pengujian dibuat lewat seed `api-services/seeds/0002_users.sql`.
 
 | Kolom | Tipe | Constraint | Keterangan |
 |-------|------|------------|------------|
