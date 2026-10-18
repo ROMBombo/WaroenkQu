@@ -545,12 +545,56 @@ Dengan antrean ini, transaksi kasir tidak perlu menunggu notifikasi selesai dibu
 
 ### 7. Notification Service
 
-1. Mengambil pesan dari queue `stock.low` dengan **manual ack**.
-2. Menyimpan notifikasi ke tabel `notifications` dengan `INSERT ... ON CONFLICT DO NOTHING`.
-3. Kalau row baru tersimpan, mengirim event `notification.created` ke webapp owner lewat WebSocket. Kalau tidak tersimpan (produk sudah punya notifikasi untuk katalog yang sama), pesan diabaikan.
-4. Setelah langkah 2 selesai, pesan di-ack. Kalau Notification Service crash atau gagal menyimpan ke database sebelum ack, RabbitMQ mengirim ulang pesan tersebut.
+Service Go (GORM) yang mengambil pesan stok menipis dan mengirim notifikasi realtime ke owner.
 
-Kalau owner sedang tidak membuka webapp, notifikasi tetap tersimpan dan akan muncul saat owner membuka webapp lagi.
+1. Mengambil pesan dari queue `stock.low` dengan **manual ack**.
+2. Menyimpan notifikasi ke tabel `notifications` dengan `INSERT ... ON CONFLICT DO NOTHING`. Isi pesan: "Stok {nama produk} tersisa {stok} (minimum {stok minimum})".
+3. Pesan di-ack setelah notifikasi tersimpan, lalu kalau row benar-benar baru, event `notification.created` dikirim ke semua koneksi WebSocket owner. Kalau tidak tersimpan (produk sudah punya notifikasi untuk katalog yang sama), pesan di-ack dan diabaikan.
+
+Penanganan pesan:
+
+| Kondisi | Yang terjadi |
+|---------|--------------|
+| Berhasil disimpan, atau sudah ada notifikasi yang sama | Ack |
+| Database sedang tidak bisa diakses | Nack + requeue setelah jeda 2 detik, dicoba lagi sampai berhasil |
+| Pesan rusak (bukan JSON, field wajib kosong, produk/katalog tidak ada) | Dibuang (reject tanpa requeue) dan dicatat di log, supaya queue tidak macet |
+| Notification Service crash sebelum ack | RabbitMQ mengirim ulang pesan tersebut |
+| Koneksi RabbitMQ putus | Menyambung ulang otomatis dengan jeda 1, 2, 4, ... detik (maksimal 30 detik) |
+
+Kalau owner sedang tidak membuka webapp, notifikasi tetap tersimpan dan akan muncul saat owner membuka webapp lagi (`GET /v1/notifications`).
+
+#### WebSocket
+
+- **URL:** `ws://localhost:3001/ws?access_token=<access_token>`. Browser tidak bisa mengirim header `Authorization` saat membuka WebSocket, jadi token dikirim lewat query param.
+- **Autentikasi:** token diverifikasi sebelum koneksi dibuka. User harus aktif dan role-nya punya permission `notification:read` (hanya owner).
+
+  | Kondisi | Response |
+  |---------|----------|
+  | Token tidak ada, tidak valid, kedaluwarsa, atau user nonaktif | `401 {"error":{"code":"UNAUTHORIZED","message":"Unauthorized"}}` |
+  | Role tidak punya `notification:read` (misalnya kasir) | `403 {"error":{"code":"FORBIDDEN","message":"Forbidden"}}` |
+
+- **Token kedaluwarsa saat terhubung:** koneksi ditutup dengan close code `4001`. Webapp harus refresh token lalu menyambung ulang.
+- **Keep-alive:** server mengirim ping setiap 54 detik. Koneksi yang tidak membalas pong dalam 60 detik ditutup.
+- **Event yang dikirim server.** Isi `data` sama bentuknya dengan item di `GET /v1/notifications`:
+
+  ```json
+  {
+    "event": "notification.created",
+    "data": {
+      "id": "2ad7d1a7-a10a-42b9-9370-bc2834f5f174",
+      "product": { "id": "3f1c2a9e-8b7d-4c6a-9e21-5d4b3a2f1e00", "name": "Indomie Goreng" },
+      "catalog_publish_id": "9b2d4e6f-1a3c-4b5d-8e7f-0a1b2c3d4e5f",
+      "message": "Stok Indomie Goreng tersisa 10 (minimum 10)",
+      "is_read": false,
+      "created_at": "2026-10-18T22:37:02+07:00",
+      "read_at": null
+    },
+    "meta": { "unread_count": 1 }
+  }
+  ```
+
+- Pesan yang dikirim client ke server diabaikan.
+- `GET /health` dipakai healthcheck Docker.
 
 ---
 
