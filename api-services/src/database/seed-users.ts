@@ -1,7 +1,7 @@
 import { Logger } from '@nestjs/common';
 import { hash } from 'bcryptjs';
 import { DataSource } from 'typeorm';
-import { config } from '../config';
+import { config } from '../config/configuration';
 import { Role, User } from './entities';
 
 const logger = new Logger('Seed');

@@ -45,7 +45,7 @@ export class OutboxMessage {
   queue!: string;
 
   @Column({ type: 'jsonb' })
-  payload!: Record<string, unknown>;
+  payload!: object;
 
   @Column({ type: 'varchar', length: 10, default: 'PENDING' })
   status!: OutboxStatus;
