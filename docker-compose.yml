@@ -99,9 +99,9 @@ services:
       <<: *common-env
       CATALOG_PUBLISH_INTERVAL: ${CATALOG_PUBLISH_INTERVAL}
     depends_on:
+      # Schema dibuat oleh migration api-services, jadi harus menunggu api-services healthy
       api-services:
         condition: service_healthy
-    profiles: ["wip"]
 
   notification-service:
     build: ./notification-service
