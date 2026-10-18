@@ -509,7 +509,7 @@ Isinya hanya berubah saat Catalog Publisher berjalan. Tujuannya supaya kasir tid
 
 ### 5. Catalog Publisher
 
-Berjalan otomatis secara berkala (cronjob). Tugasnya:
+Service Python (SQLAlchemy) yang berjalan terus di container dan publish katalog secara berkala. Tugasnya:
 1. Membuka satu DB transaction dan mengunci semua produk (`SELECT ... FROM products ORDER BY id FOR UPDATE`), supaya perubahan owner yang masuk di tengah proses menunggu dan masuk ke publish berikutnya. Urutan `ORDER BY id` sama dengan urutan penguncian di transaksi kasir, supaya tidak deadlock.
 2. Dari produk yang terkunci, mengambil yang aktif dan belum dihapus.
 3. Menyimpan satu row baru di `catalog_publishes` berisi waktu publish dan array produk (id, nama, harga, stok minimum).
@@ -517,7 +517,9 @@ Berjalan otomatis secara berkala (cronjob). Tugasnya:
 5. Commit DB transaction.
 6. Menulis ulang key `catalog:current` di Redis dengan row `catalog_publishes` tersebut. Kalau gagal, proses ini diulang sampai berhasil.
 
-Catalog Publisher juga langsung berjalan sekali saat pertama kali dinyalakan, supaya sejak awal selalu ada katalog di Redis dan `catalog_publishes` (transaksi kasir membutuhkan `catalog_publish_id`). Jadwal berikutnya dihitung dari `published_at` terakhir + `CATALOG_PUBLISH_INTERVAL`, sama dengan perhitungan `effective_at`.
+Jadwal publish dihitung dari `published_at` terakhir + `CATALOG_PUBLISH_INTERVAL`, sama dengan perhitungan `effective_at`. Setiap kali container start:
+- **Belum ada katalog sama sekali**, atau **sudah lewat waktunya** → langsung publish. Jadi sejak awal selalu ada katalog di Redis dan `catalog_publishes`, karena transaksi kasir membutuhkan `catalog_publish_id`.
+- **Belum waktunya** → tidak membuat katalog baru, hanya memastikan isi Redis sama dengan row `catalog_publishes` terbaru (misalnya setelah data Redis hilang). Jadi restart container tidak memajukan "hari".
 
 Di sistem sungguhan proses ini berjalan sekali sehari (H+1). Di environment tes, proses ini berjalan **setiap n detik** dan intervalnya bisa diatur lewat environment variable `CATALOG_PUBLISH_INTERVAL`.
 
