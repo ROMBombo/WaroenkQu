@@ -1,6 +1,7 @@
 import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Param, Patch, Post, Put, Query } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { PermissionCode } from '../../common/constants/permission-code.enum';
+import { ApiErrorResponses, ApiProtected } from '../../common/decorators/api-error-responses.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { RequirePermissions } from '../../common/decorators/require-permissions.decorator';
 import { ApiDataResponse, ApiResponseBody, ok } from '../../common/dto/api-response';
@@ -31,7 +32,7 @@ type ProductResponse = ApiResponseBody<ProductResponseDto>;
 type EffectiveProductResponse<T = ProductResponseDto> = ApiResponseBody<T, EffectiveAtMetaDto>;
 
 @ApiTags('Product Management (Owner)')
-@ApiBearerAuth()
+@ApiProtected()
 @Controller('v1/product-management')
 export class ProductsController {
   constructor(
@@ -42,6 +43,7 @@ export class ProductsController {
   @Post()
   @RequirePermissions(PermissionCode.PRODUCT_CREATE)
   @ApiOperation({ summary: 'Menambah produk (berlaku di kasir setelah publish berikutnya)' })
+  @ApiErrorResponses('VALIDATION_ERROR', 'DUPLICATE_PRODUCT_NAME')
   @ApiDataResponse(ProductResponseDto, { status: HttpStatus.CREATED, meta: EffectiveAtMetaDto })
   async create(@Body() dto: CreateProductDto, @CurrentUser() user: AuthUser): Promise<EffectiveProductResponse> {
     return this.withEffectiveAt(await this.productsService.create(dto, user));
@@ -50,8 +52,11 @@ export class ProductsController {
   @Get()
   @RequirePermissions(PermissionCode.PRODUCT_READ)
   @ApiOperation({ summary: 'List produk yang belum dihapus' })
+  @ApiErrorResponses('VALIDATION_ERROR')
   @ApiDataResponse(ProductResponseDto, { paginated: true })
-  async findAll(@Query() query: ListProductsQueryDto): Promise<ApiResponseBody<ProductResponseDto[], PaginationMetaDto>> {
+  async findAll(
+    @Query() query: ListProductsQueryDto,
+  ): Promise<ApiResponseBody<ProductResponseDto[], PaginationMetaDto>> {
     const [products, total] = await this.productsService.findAll(query);
     return ok(products.map(toProductResponse), paginationMeta(query, total));
   }
@@ -59,6 +64,7 @@ export class ProductsController {
   @Get(':id')
   @RequirePermissions(PermissionCode.PRODUCT_READ)
   @ApiOperation({ summary: 'Detail produk' })
+  @ApiErrorResponses('INVALID_UUID', 'PRODUCT_NOT_FOUND')
   @ApiDataResponse(ProductResponseDto)
   async findOne(@Param('id', uuidPipe) id: string): Promise<ProductResponse> {
     return ok(toProductResponse(await this.productsService.findOne(id)));
@@ -67,6 +73,7 @@ export class ProductsController {
   @Put(':id')
   @RequirePermissions(PermissionCode.PRODUCT_UPDATE)
   @ApiOperation({ summary: 'Mengubah nama, harga, dan stok minimum' })
+  @ApiErrorResponses('VALIDATION_ERROR', 'INVALID_UUID', 'PRODUCT_NOT_FOUND', 'DUPLICATE_PRODUCT_NAME')
   @ApiDataResponse(ProductResponseDto, { meta: EffectiveAtMetaDto })
   async update(
     @Param('id', uuidPipe) id: string,
@@ -79,6 +86,7 @@ export class ProductsController {
   @Delete(':id')
   @RequirePermissions(PermissionCode.PRODUCT_DELETE)
   @ApiOperation({ summary: 'Menghapus produk (soft delete)' })
+  @ApiErrorResponses('INVALID_UUID', 'PRODUCT_NOT_FOUND')
   @ApiDataResponse(DeletedProductResponseDto, { meta: EffectiveAtMetaDto })
   async remove(
     @Param('id', uuidPipe) id: string,
@@ -94,6 +102,7 @@ export class ProductsController {
   @Patch(':id/status')
   @RequirePermissions(PermissionCode.PRODUCT_STATUS_UPDATE)
   @ApiOperation({ summary: 'Mengaktifkan atau menonaktifkan produk' })
+  @ApiErrorResponses('VALIDATION_ERROR', 'INVALID_UUID', 'PRODUCT_NOT_FOUND')
   @ApiDataResponse(ProductResponseDto, { meta: EffectiveAtMetaDto })
   async updateStatus(
     @Param('id', uuidPipe) id: string,
@@ -107,6 +116,7 @@ export class ProductsController {
   @HttpCode(HttpStatus.OK)
   @RequirePermissions(PermissionCode.PRODUCT_STOCK_UPDATE)
   @ApiOperation({ summary: 'Menambah stok (langsung berlaku)' })
+  @ApiErrorResponses('VALIDATION_ERROR', 'INVALID_UUID', 'PRODUCT_NOT_FOUND')
   @ApiDataResponse(ProductResponseDto)
   async stockIn(
     @Param('id', uuidPipe) id: string,
@@ -120,6 +130,7 @@ export class ProductsController {
   @HttpCode(HttpStatus.OK)
   @RequirePermissions(PermissionCode.PRODUCT_STOCK_UPDATE)
   @ApiOperation({ summary: 'Mengurangi stok (langsung berlaku, ditolak kalau hasilnya negatif)' })
+  @ApiErrorResponses('VALIDATION_ERROR', 'INVALID_UUID', 'PRODUCT_NOT_FOUND', 'INSUFFICIENT_STOCK_OUT')
   @ApiDataResponse(ProductResponseDto)
   async stockOut(
     @Param('id', uuidPipe) id: string,
@@ -132,6 +143,7 @@ export class ProductsController {
   @Get(':id/history')
   @RequirePermissions(PermissionCode.PRODUCT_HISTORY_READ)
   @ApiOperation({ summary: 'History perubahan produk (termasuk produk yang sudah dihapus)' })
+  @ApiErrorResponses('VALIDATION_ERROR', 'INVALID_UUID', 'PRODUCT_NOT_FOUND')
   @ApiDataResponse(ProductHistoryResponseDto, { paginated: true })
   async findHistory(
     @Param('id', uuidPipe) id: string,

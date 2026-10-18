@@ -1,6 +1,7 @@
 import { Controller, Get, Param, Query } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { PermissionCode } from '../../common/constants/permission-code.enum';
+import { ApiErrorResponses, ApiProtected } from '../../common/decorators/api-error-responses.decorator';
 import { RequirePermissions } from '../../common/decorators/require-permissions.decorator';
 import { ApiDataResponse, ApiResponseBody, ok } from '../../common/dto/api-response';
 import { PaginationMetaDto, PaginationQueryDto, paginationMeta } from '../../common/dto/pagination.dto';
@@ -13,7 +14,7 @@ import {
 } from './dto/catalog-response.dto';
 
 @ApiTags('Catalog Management (Owner)')
-@ApiBearerAuth()
+@ApiProtected()
 @RequirePermissions(PermissionCode.CATALOG_MANAGEMENT_READ)
 @Controller('v1/catalog-management')
 export class CatalogManagementController {
@@ -28,6 +29,7 @@ export class CatalogManagementController {
 
   @Get('history')
   @ApiOperation({ summary: 'List history katalog' })
+  @ApiErrorResponses('VALIDATION_ERROR')
   @ApiDataResponse(CatalogHistoryItemResponseDto, { paginated: true })
   async listHistory(
     @Query() query: PaginationQueryDto,
@@ -38,6 +40,7 @@ export class CatalogManagementController {
 
   @Get('history/:id')
   @ApiOperation({ summary: 'Isi katalog pada satu waktu publish' })
+  @ApiErrorResponses('INVALID_UUID', 'CATALOG_NOT_FOUND')
   @ApiDataResponse(CatalogHistoryDetailResponseDto)
   async getHistory(@Param('id', uuidPipe) id: string): Promise<ApiResponseBody<CatalogHistoryDetailResponseDto>> {
     return ok(await this.catalogService.getHistory(id));
