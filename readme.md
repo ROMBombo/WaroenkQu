@@ -20,7 +20,7 @@ Prinsip utama sistem ini: **semua perubahan data produk oleh owner baru berlaku 
         │ HTTP                                   │ consume
         ▼                                        │
 ┌───────────────┐       publish       ┌──────────┴───────────┐
-│  API Service  │────────────────────►│       RabbitMQ       │
+│ API Services  │────────────────────►│       RabbitMQ       │
 └───┬───────┬───┘                     └──────────────────────┘
     │       │
     │       │ baca katalog
@@ -39,14 +39,14 @@ Prinsip utama sistem ini: **semua perubahan data produk oleh owner baru berlaku 
 
 Catatan diagram:
 - Notification Service juga menyimpan notifikasi ke PostgreSQL (garis tidak digambar agar diagram tetap rapi).
-- API Service tidak langsung mengirim pesan ke RabbitMQ saat transaksi. Pesan disimpan dulu di tabel `outbox_messages`, lalu dikirim oleh **outbox worker** yang berjalan di dalam API Service (lihat [Outbox worker](#outbox-worker)).
+- API Services tidak langsung mengirim pesan ke RabbitMQ saat transaksi. Pesan disimpan dulu di tabel `outbox_messages`, lalu dikirim oleh **outbox worker** yang berjalan di dalam API Services (lihat [Outbox worker](#outbox-worker)).
 
 ### Daftar service
 
 | No | Service | Peran singkat |
 |----|---------|---------------|
 | 1 | Webapp | Aplikasi sebagai media interaksi untuk owner dan kasir |
-| 2 | API Service | Pintu masuk semua proses dari webapp. Juga menjalankan outbox worker yang mengirim pesan ke RabbitMQ |
+| 2 | API Services | Pintu masuk semua proses dari webapp. Juga menjalankan outbox worker yang mengirim pesan ke RabbitMQ |
 | 3 | PostgreSQL | Database utama |
 | 4 | Redis | Katalog produk yang berlaku hari ini, dipakai kasir |
 | 5 | Catalog Publisher | Menyalin produk aktif dari PostgreSQL menjadi katalog di Redis secara berkala (setiap "hari") |
@@ -63,17 +63,17 @@ Bagian ini menjelaskan data apa yang ada di mana, siapa yang menulis, dan siapa 
 
 | Data | Disimpan di | Ditulis oleh | Dibaca oleh |
 |------|-------------|--------------|-------------|
-| Produk (nama, harga, stok, stok minimum, status) | PostgreSQL `products` | API Service (owner), API Service (stok, saat transaksi) | API Service (owner, transaksi), Catalog Publisher |
-| History produk | PostgreSQL `product_histories` | Trigger database pada `products` | API Service (owner) |
-| Katalog (snapshot produk aktif) | PostgreSQL `catalog_publishes` | Catalog Publisher | API Service (owner: history katalog) |
-| Katalog yang berlaku hari ini | Redis key `catalog:current` | Catalog Publisher | API Service (kasir: katalog & transaksi) |
-| Transaksi | PostgreSQL `transactions`, `transaction_items` | API Service (kasir) | API Service (owner & kasir: history transaksi) |
-| Pesan stok menipis (antrean kirim) | PostgreSQL `outbox_messages` | API Service (saat transaksi) | Outbox worker (di API Service) |
-| Pesan stok menipis | RabbitMQ queue `stock.low` | Outbox worker (di API Service) | Notification Service |
-| Notifikasi | PostgreSQL `notifications` | Notification Service | API Service (owner) |
+| Produk (nama, harga, stok, stok minimum, status) | PostgreSQL `products` | API Services (owner), API Services (stok, saat transaksi) | API Services (owner, transaksi), Catalog Publisher |
+| History produk | PostgreSQL `product_histories` | Trigger database pada `products` | API Services (owner) |
+| Katalog (snapshot produk aktif) | PostgreSQL `catalog_publishes` | Catalog Publisher | API Services (owner: history katalog) |
+| Katalog yang berlaku hari ini | Redis key `catalog:current` | Catalog Publisher | API Services (kasir: katalog & transaksi) |
+| Transaksi | PostgreSQL `transactions`, `transaction_items` | API Services (kasir) | API Services (owner & kasir: history transaksi) |
+| Pesan stok menipis (antrean kirim) | PostgreSQL `outbox_messages` | API Services (saat transaksi) | Outbox worker (di API Services) |
+| Pesan stok menipis | RabbitMQ queue `stock.low` | Outbox worker (di API Services) | Notification Service |
+| Notifikasi | PostgreSQL `notifications` | Notification Service | API Services (owner) |
 | Notifikasi realtime | WebSocket event `notification.created` | Notification Service | Webapp (owner) |
-| User, role, permission | PostgreSQL `users`, `roles`, `permissions`, `role_permissions` | Seed data | API Service (login & cek akses) |
-| Refresh token | PostgreSQL `refresh_tokens` | API Service (login & refresh) | API Service (refresh) |
+| User, role, permission | PostgreSQL `users`, `roles`, `permissions`, `role_permissions` | Seed data | API Services (login & cek akses) |
+| Refresh token | PostgreSQL `refresh_tokens` | API Services (login & refresh) | API Services (refresh) |
 
 ### Kapan perubahan terlihat
 
@@ -91,7 +91,7 @@ Setelah Catalog Publisher berjalan, semua produk `PENDING` menjadi `PUBLISHED`.
 
 | Komponen | Yang bisa dicek |
 |----------|-----------------|
-| API Service | Status code, body response, pesan error |
+| API Services | Status code, body response, pesan error |
 | PostgreSQL | Isi tabel `products`, `product_histories`, `transactions`, `transaction_items`, `outbox_messages`, `notifications`, `catalog_publishes` |
 | Redis | Isi key `catalog:current` |
 | RabbitMQ | Pesan di queue `stock.low`. RabbitMQ bisa dimatikan dan dinyalakan untuk menguji pengiriman ulang |
@@ -135,12 +135,12 @@ Waktu tersebut diambil dari field `effective_at` di response API. Pesan ini tida
 - Melihat history transaksi yang dibuatnya sendiri beserta detailnya.
 - Kalau katalog di state sudah usang (sudah ada publish baru), transaksi ditolak. Webapp memuat ulang katalog dan meminta kasir mengecek ulang transaksinya.
 
-### 2. API Service
+### 2. API Services
 
 Penghubung antara webapp dengan PostgreSQL, Redis, dan RabbitMQ.
 
 Ketentuan umum:
-- Semua endpoint kecuali login dan refresh membutuhkan `access_token` di header `Authorization: Bearer <token>`. API Service mengecek apakah role user punya permission untuk endpoint tersebut (lihat [Data awal role dan permission](#data-awal-role-dan-permission)).
+- Semua endpoint kecuali login dan refresh membutuhkan `access_token` di header `Authorization: Bearer <token>`. API Services mengecek apakah role user punya permission untuk endpoint tersebut (lihat [Data awal role dan permission](#data-awal-role-dan-permission)).
 - Semua waktu memakai zona waktu **UTC+7 (Asia/Jakarta)**. Database menyimpan `TIMESTAMPTZ`, dan API menampilkan waktu dalam UTC+7 (format dd-mm-yyyy hh:mm:ss untuk field yang ditampilkan ke user).
 - Semua endpoint GET yang mengembalikan list memakai pagination.
 - Detail request, response, dan pagination tiap endpoint ada di dokumentasi Swagger.
@@ -225,14 +225,14 @@ Ketentuan umum:
 
 #### Outbox worker
 
-Background worker yang berjalan di dalam API Service (bukan service terpisah). Tugasnya memastikan setiap pesan stok menipis **pasti terkirim** ke RabbitMQ, walaupun RabbitMQ sedang mati.
+Background worker yang berjalan di dalam API Services (bukan service terpisah). Tugasnya memastikan setiap pesan stok menipis **pasti terkirim** ke RabbitMQ, walaupun RabbitMQ sedang mati.
 
-1. Setiap `OUTBOX_POLL_INTERVAL` (default 1 detik), worker mengambil row `outbox_messages` dengan `status = 'PENDING'` dan `next_attempt_at <= now()`, memakai `SELECT ... FOR UPDATE SKIP LOCKED` (aman kalau API Service berjalan lebih dari satu instance).
+1. Setiap `OUTBOX_POLL_INTERVAL` (default 1 detik), worker mengambil row `outbox_messages` dengan `status = 'PENDING'` dan `next_attempt_at <= now()`, memakai `SELECT ... FOR UPDATE SKIP LOCKED` (aman kalau API Services berjalan lebih dari satu instance).
 2. Mengirim `payload` ke queue tujuan sebagai pesan persistent, lalu menunggu konfirmasi RabbitMQ (publisher confirm).
 3. Kalau berhasil: `status = 'SENT'`, `sent_at = now()`.
 4. Kalau gagal (RabbitMQ mati atau tidak mengonfirmasi): `status` tetap `PENDING`, `attempts` bertambah, `last_error` diisi, dan `next_attempt_at` dimundurkan dengan jeda yang makin lama (1, 2, 4, 8, ... detik, maksimal 60 detik). Tidak ada batas jumlah percobaan.
 
-Karena pesan tersimpan di database, pesan tidak hilang walaupun API Service restart. Worker melanjutkan pengiriman saat API Service hidup lagi.
+Karena pesan tersimpan di database, pesan tidak hilang walaupun API Services restart. Worker melanjutkan pengiriman saat API Services hidup lagi.
 
 ### 3. PostgreSQL
 
@@ -274,14 +274,14 @@ Index:
 
 **Trigger pada `products`**
 
-API Service hanya menulis ke tabel `products`. Pengisian `updated_at`, `publish_status`, dan history dilakukan oleh trigger database:
+API Services hanya menulis ke tabel `products`. Pengisian `updated_at`, `publish_status`, dan history dilakukan oleh trigger database:
 
 1. **`trg_products_before_update`** (BEFORE UPDATE)
    - Kalau salah satu kolom `name`, `price`, `stock`, `min_stock`, `is_active`, atau `deleted_at` berubah, `updated_at` diisi `now()`.
    - Kalau salah satu kolom yang masuk katalog berubah (`name`, `price`, `min_stock`, `is_active`, `deleted_at`), `publish_status` diisi `PENDING`. Perubahan `stock` tidak mengubah `publish_status`.
 2. **`trg_products_history`** (AFTER INSERT OR UPDATE)
-   - Hanya mencatat history kalau session variable `app.changed_by` terisi. API Service mengisinya (`SET LOCAL app.changed_by = '<id owner>'`) hanya di endpoint product-management. Transaksi kasir dan Catalog Publisher tidak mengisinya, jadi tidak membuat history.
-   - Untuk tambah/kurang stok, API Service juga mengisi `SET LOCAL app.note = '<note>'`.
+   - Hanya mencatat history kalau session variable `app.changed_by` terisi. API Services mengisinya (`SET LOCAL app.changed_by = '<id owner>'`) hanya di endpoint product-management. Transaksi kasir dan Catalog Publisher tidak mengisinya, jadi tidak membuat history.
+   - Untuk tambah/kurang stok, API Services juga mengisi `SET LOCAL app.note = '<note>'`.
    - Jenis action ditentukan dari perbandingan `OLD` dan `NEW`:
 
      | Kondisi | Action |
@@ -365,7 +365,7 @@ Unique: (`product_id`, `catalog_publish_id`). Satu produk maksimal punya satu no
 Index: `idx_notifications_is_read` pada `is_read` (hitung jumlah belum dibaca).
 
 #### Tabel `outbox_messages`
-Antrean pesan yang akan dikirim ke RabbitMQ. Ditulis oleh API Service dalam DB transaction yang sama dengan transaksi kasir, lalu dikirim oleh [outbox worker](#outbox-worker).
+Antrean pesan yang akan dikirim ke RabbitMQ. Ditulis oleh API Services dalam DB transaction yang sama dengan transaksi kasir, lalu dikirim oleh [outbox worker](#outbox-worker).
 
 | Kolom | Tipe | Constraint | Keterangan |
 |-------|------|------------|------------|
@@ -495,7 +495,7 @@ Menyimpan **katalog yang berlaku hari ini** di key `catalog:current`. Isinya ada
 }
 ```
 
-Isinya hanya berubah saat Catalog Publisher berjalan. Tujuannya supaya kasir tidak perlu membaca database untuk mendapatkan nama dan harga produk. `min_stock` dipakai API Service untuk mengecek stok menipis, tapi tidak dikirim ke webapp kasir.
+Isinya hanya berubah saat Catalog Publisher berjalan. Tujuannya supaya kasir tidak perlu membaca database untuk mendapatkan nama dan harga produk. `min_stock` dipakai API Services untuk mengecek stok menipis, tapi tidak dikirim ke webapp kasir.
 
 ### 5. Catalog Publisher
 
@@ -513,7 +513,7 @@ Di sistem sungguhan proses ini berjalan sekali sehari (H+1). Di environment tes,
 
 ### 6. RabbitMQ
 
-Antrean untuk pesan **stok menipis** di queue `stock.low`. Outbox worker di API Service menaruh pesan di sini, lalu Notification Service mengambilnya.
+Antrean untuk pesan **stok menipis** di queue `stock.low`. Outbox worker di API Services menaruh pesan di sini, lalu Notification Service mengambilnya.
 
 Queue `stock.low` dibuat **durable** dan pesannya **persistent**, jadi pesan yang belum diambil tidak hilang walaupun RabbitMQ restart.
 
@@ -616,7 +616,7 @@ Kalau owner sedang tidak membuka webapp, notifikasi tetap tersimpan dan akan mun
 ### Transaksi
 - Satu transaksi berisi minimal satu produk. Satu produk hanya boleh muncul sekali dalam satu transaksi.
 - Quantity tiap produk wajib angka bulat, minimal 1.
-- Nama dan harga diambil dari katalog Redis, **bukan** dari request webapp. Total dihitung ulang oleh API Service.
+- Nama dan harga diambil dari katalog Redis, **bukan** dari request webapp. Total dihitung ulang oleh API Services.
 - `catalog_publish_id` di request harus sama dengan katalog di Redis. Kalau berbeda (sudah ada publish baru sejak katalog dimuat di webapp), transaksi ditolak dengan `409 CATALOG_OUTDATED`.
 - Semua produk harus ada di katalog Redis. Produk yang dinonaktifkan atau dihapus tapi masih ada di katalog tetap bisa dijual.
 - Uang dibayar (`paid_amount`) wajib angka bulat dan tidak boleh kurang dari total. Kembalian = uang dibayar − total.
@@ -645,8 +645,8 @@ Contoh data yang dipakai: katalog yang berlaku adalah **K1**. Interval publish d
 ### Login
 1. User mengisi username dan password di webapp.
 2. Webapp memanggil `POST /v1/auth/login`.
-3. API Service mencari user di tabel `users`, mencocokkan password dengan `password_hash`, dan memastikan user aktif.
-4. Kalau cocok, API Service mengembalikan `access_token` (30 menit), `refresh_token` (7 hari), role, dan permission (dari `roles` dan `role_permissions`). Kalau tidak, `401`.
+3. API Services mencari user di tabel `users`, mencocokkan password dengan `password_hash`, dan memastikan user aktif.
+4. Kalau cocok, API Services mengembalikan `access_token` (30 menit), `refresh_token` (7 hari), role, dan permission (dari `roles` dan `role_permissions`). Kalau tidak, `401`.
 5. Webapp menampilkan menu sesuai role.
 6. Saat `access_token` kedaluwarsa, request berikutnya mendapat `401`. Webapp memanggil `POST /v1/auth/refresh` dengan `refresh_token`, mendapat pasangan token baru, lalu mengulang request tadi.
 7. Kalau refresh juga gagal (`refresh_token` kedaluwarsa atau sudah dipakai), webapp mengarahkan user ke halaman login.
@@ -654,7 +654,7 @@ Contoh data yang dipakai: katalog yang berlaku adalah **K1**. Interval publish d
 ### Owner menambah produk
 1. Owner mengisi nama "Teh Pucuk", harga 4000, stok 50, stok minimum 10.
 2. Webapp memanggil `POST /v1/product-management`.
-3. API Service memvalidasi data (termasuk nama belum dipakai), lalu `INSERT` ke `products` dengan `is_active = true`, `publish_status = 'PENDING'`.
+3. API Services memvalidasi data (termasuk nama belum dipakai), lalu `INSERT` ke `products` dengan `is_active = true`, `publish_status = 'PENDING'`.
 4. Trigger menyimpan history `CREATE`.
 5. Response berisi `effective_at`. Webapp menampilkan pesan bahwa produk berlaku di kasir mulai waktu tersebut.
 6. Di halaman owner, Teh Pucuk langsung muncul dengan label "Menunggu publish".
@@ -665,7 +665,7 @@ Contoh data yang dipakai: katalog yang berlaku adalah **K1**. Interval publish d
 ### Owner mengubah produk
 1. Indomie Goreng berstatus `PUBLISHED` dengan harga Rp3.500. Owner mengubah harganya menjadi Rp4.000.
 2. Webapp memanggil `PUT /v1/product-management/{id}`.
-3. API Service meng-`UPDATE` `products`. Trigger mengisi `updated_at`, mengubah `publish_status` menjadi `PENDING`, dan menyimpan history `UPDATE`.
+3. API Services meng-`UPDATE` `products`. Trigger mengisi `updated_at`, mengubah `publish_status` menjadi `PENDING`, dan menyimpan history `UPDATE`.
 4. Webapp menampilkan pesan `effective_at`. Halaman owner langsung menampilkan Rp4.000 dengan label "Menunggu publish".
 5. Transaksi kasir masih memakai Rp3.500 dari katalog K1.
 6. Catalog Publisher berjalan dan membuat katalog K2 dengan harga Rp4.000. `publish_status` menjadi `PUBLISHED`.
@@ -683,7 +683,7 @@ Contoh data yang dipakai: katalog yang berlaku adalah **K1**. Interval publish d
 
 ### Owner menghapus produk
 1. Owner menghapus Teh Botol (`DELETE /v1/product-management/{id}`).
-2. API Service mengisi `deleted_at`. Trigger mengubah `publish_status` menjadi `PENDING` dan menyimpan history `DELETE`.
+2. API Services mengisi `deleted_at`. Trigger mengubah `publish_status` menjadi `PENDING` dan menyimpan history `DELETE`.
 3. Teh Botol langsung hilang dari list produk owner. History-nya tetap bisa dilihat lewat `/history`.
 4. Selama katalog yang berlaku masih berisi Teh Botol, kasir masih bisa menjualnya dan stoknya tetap berkurang.
 5. Setelah publish berikutnya, Teh Botol tidak ada lagi di katalog.
@@ -709,9 +709,9 @@ Contoh data yang dipakai: katalog yang berlaku adalah **K1**. Interval publish d
 2. Kasir memilih Indomie Goreng (Rp3.500) jumlah 2 dan Teh Botol (Rp5.000) jumlah 1. Webapp menampilkan total Rp12.000.
 3. Kasir mengisi uang dibayar Rp20.000. Webapp menampilkan kembalian Rp8.000.
 4. Webapp memanggil `POST /v1/transactions` dengan `catalog_publish_id` K1, daftar item, dan `paid_amount` 20000.
-5. API Service membaca `catalog:current` dari Redis dan memastikan `catalog_publish_id` sama dengan K1. Kalau tidak, `409 CATALOG_OUTDATED`.
-6. API Service memastikan semua produk ada di katalog, lalu menghitung ulang subtotal dan total dari harga katalog, dan memastikan `paid_amount` ≥ total.
-7. Dalam satu DB transaction, API Service:
+5. API Services membaca `catalog:current` dari Redis dan memastikan `catalog_publish_id` sama dengan K1. Kalau tidak, `409 CATALOG_OUTDATED`.
+6. API Services memastikan semua produk ada di katalog, lalu menghitung ulang subtotal dan total dari harga katalog, dan memastikan `paid_amount` ≥ total.
+7. Dalam satu DB transaction, API Services:
    - Mengurangi stok tiap produk dengan query atomic (`stock = stock - :qty WHERE stock >= :qty`). Produk diproses berurutan berdasarkan `product_id` supaya tidak deadlock dengan transaksi lain.
    - Kalau salah satu produk stoknya tidak cukup, semua dibatalkan dan transaksi ditolak (`422 INSUFFICIENT_STOCK`).
    - Menyimpan `transactions` (total, paid_amount, change_amount, catalog_publish_id, cashier_id) dan `transaction_items`.
@@ -732,7 +732,7 @@ Contoh data yang dipakai: katalog yang berlaku adalah **K1**. Interval publish d
 
 ### Stok menipis
 1. Transaksi membuat stok Indomie Goreng turun dari 12 menjadi 9, sedangkan stok minimumnya di katalog K1 adalah 10.
-2. Dalam DB transaction yang sama, API Service menyimpan row `outbox_messages` (`PENDING`) berisi `product_id`, `product_name`, `catalog_publish_id` K1, stok 9, dan stok minimum 10.
+2. Dalam DB transaction yang sama, API Services menyimpan row `outbox_messages` (`PENDING`) berisi `product_id`, `product_name`, `catalog_publish_id` K1, stok 9, dan stok minimum 10.
 3. Outbox worker mengirim pesan ke queue `stock.low`. Setelah RabbitMQ mengonfirmasi, row outbox menjadi `SENT`.
 4. Notification Service mengambil pesan, menyimpan notifikasi dengan `ON CONFLICT DO NOTHING`, lalu ack.
 5. Karena notifikasi baru tersimpan, Notification Service mengirim event `notification.created` lewat WebSocket. Lonceng di halaman owner bertambah satu.
@@ -746,9 +746,9 @@ Contoh data yang dipakai: katalog yang berlaku adalah **K1**. Interval publish d
 4. RabbitMQ dinyalakan lagi. Pada percobaan berikutnya, outbox worker berhasil mengirim dan row menjadi `SENT`.
 5. Notification Service memproses pesan, dan lonceng owner bertambah satu.
 6. Kalau yang dimatikan adalah Notification Service: row outbox langsung `SENT`, pesan menumpuk di queue `stock.low`. Setelah Notification Service hidup lagi, pesan diproses dan notifikasi muncul.
-7. Kalau API Service restart saat masih ada row `PENDING`: setelah hidup lagi, outbox worker melanjutkan pengiriman. Tidak ada pesan yang hilang.
+7. Kalau API Services restart saat masih ada row `PENDING`: setelah hidup lagi, outbox worker melanjutkan pengiriman. Tidak ada pesan yang hilang.
 
 ### Owner membaca notifikasi
 1. Owner membuka webapp. Webapp memanggil `GET /v1/notifications` dan menampilkan list notifikasi beserta jumlah yang belum dibaca di lonceng.
 2. Owner membuka satu notifikasi. Webapp memanggil `PATCH /v1/notifications/{id}/read`.
-3. API Service mengisi `is_read = true` dan `read_at`. Jumlah belum dibaca di lonceng berkurang satu.
+3. API Services mengisi `is_read = true` dan `read_at`. Jumlah belum dibaca di lonceng berkurang satu.
