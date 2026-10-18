@@ -1,4 +1,5 @@
 import { toast } from 'svelte-sonner';
+import { goto } from '$app/navigation';
 import { notificationsApi } from '$lib/api/endpoints';
 import type { Notification } from '$lib/api/types';
 import { auth } from './auth.svelte';
@@ -59,6 +60,15 @@ class NotificationCenter {
   async markAsRead(id: string): Promise<void> {
     await notificationsApi.markAsRead(id);
     await this.reload();
+  }
+
+  /**
+   * Membuka notifikasi: tandai dibaca lalu ke detail produknya. Kalau gagal menandai (misalnya koneksi putus),
+   * tetap pindah ke detail produk karena itu tujuan utama user.
+   */
+  async open(notification: Notification): Promise<void> {
+    if (!notification.is_read) await this.markAsRead(notification.id).catch(() => undefined);
+    await goto(`/products/${notification.product.id}`);
   }
 
   private async connect(): Promise<void> {

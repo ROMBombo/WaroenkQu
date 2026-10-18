@@ -39,11 +39,11 @@
     {#each notificationCenter.latest as notification (notification.id)}
       <DropdownMenu.Item
         class="flex flex-col items-start gap-0.5 {notification.is_read ? '' : 'bg-accent/60'}"
-        onSelect={() => void notificationCenter.markAsRead(notification.id).catch(() => undefined)}
+        onSelect={() => void notificationCenter.open(notification)}
         data-testid="notification-dropdown-item"
       >
         <span class="text-sm">{notification.message}</span>
-        <span class="text-xs text-muted-foreground">{formatDateTime(notification.created_at)}</span>
+        <span class="text-xs text-muted-foreground">{formatDateTime(notification.created_at)} · lihat produk</span>
       </DropdownMenu.Item>
     {:else}
       <p class="px-2 py-4 text-center text-sm text-muted-foreground">Belum ada notifikasi.</p>

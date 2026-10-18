@@ -5,9 +5,11 @@
   import { requiredPermission } from '$lib/navigation';
   import { auth } from '$lib/state/auth.svelte';
   import { notificationCenter } from '$lib/state/notification-center.svelte';
-  import AppHeader from '$lib/components/layout/app-header.svelte';
+  import AppSidebar from '$lib/components/layout/app-sidebar.svelte';
+  import AppTopbar from '$lib/components/layout/app-topbar.svelte';
   import { buttonVariants } from '$lib/components/ui/button/index.js';
   import * as Card from '$lib/components/ui/card/index.js';
+  import * as Sidebar from '$lib/components/ui/sidebar/index.js';
 
   let { children } = $props();
 
@@ -29,23 +31,26 @@
 </script>
 
 {#if auth.isLoggedIn}
-  <div class="min-h-screen bg-muted/40">
-    <AppHeader />
-    <main class="mx-auto max-w-6xl px-4 py-8">
-      {#if allowed}
-        {@render children()}
-      {:else}
-        <Card.Root class="mx-auto max-w-md text-center" data-testid="forbidden-page">
-          <Card.Header>
-            <ShieldAlertIcon class="mx-auto size-10 text-muted-foreground" />
-            <Card.Title>Tidak punya akses</Card.Title>
-            <Card.Description>Halaman ini tidak tersedia untuk role Anda.</Card.Description>
-          </Card.Header>
-          <Card.Footer class="justify-center">
-            <a href="/" class={buttonVariants({ variant: 'outline' })}>Kembali ke beranda</a>
-          </Card.Footer>
-        </Card.Root>
-      {/if}
-    </main>
-  </div>
+  <Sidebar.Provider>
+    <AppSidebar />
+    <Sidebar.Inset class="bg-muted/40">
+      <AppTopbar />
+      <main class="mx-auto w-full max-w-6xl flex-1 px-4 py-6 md:px-6">
+        {#if allowed}
+          {@render children()}
+        {:else}
+          <Card.Root class="mx-auto max-w-md text-center" data-testid="forbidden-page">
+            <Card.Header>
+              <ShieldAlertIcon class="mx-auto size-10 text-muted-foreground" />
+              <Card.Title>Tidak punya akses</Card.Title>
+              <Card.Description>Halaman ini tidak tersedia untuk role Anda.</Card.Description>
+            </Card.Header>
+            <Card.Footer class="justify-center">
+              <a href="/" class={buttonVariants({ variant: 'outline' })}>Kembali ke beranda</a>
+            </Card.Footer>
+          </Card.Root>
+        {/if}
+      </main>
+    </Sidebar.Inset>
+  </Sidebar.Provider>
 {/if}

@@ -72,13 +72,19 @@
           class="flex items-center justify-between gap-4 px-2 py-3 {notification.is_read ? '' : 'rounded-md bg-accent/50'}"
           data-testid="notification-item"
         >
-          <div class="flex items-start gap-3">
+          <!-- Klik notifikasi: tandai dibaca lalu buka detail produknya -->
+          <button
+            type="button"
+            class="flex flex-1 items-start gap-3 rounded-md text-left outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            onclick={() => notificationCenter.open(notification)}
+            data-testid="notification-open"
+          >
             <BellIcon class="mt-0.5 size-4 shrink-0 {notification.is_read ? 'text-muted-foreground' : 'text-primary'}" />
-            <div>
-              <p class="text-sm font-medium" data-testid="notification-message">{notification.message}</p>
-              <p class="text-xs text-muted-foreground">{formatDateTime(notification.created_at)}</p>
-            </div>
-          </div>
+            <span>
+              <span class="block text-sm font-medium hover:underline" data-testid="notification-message">{notification.message}</span>
+              <span class="block text-xs text-muted-foreground">{formatDateTime(notification.created_at)} · lihat produk</span>
+            </span>
+          </button>
           {#if notification.is_read}
             <Badge variant="outline" class="text-muted-foreground" data-testid="notification-read-badge">
               Dibaca {formatDateTime(notification.read_at)}
