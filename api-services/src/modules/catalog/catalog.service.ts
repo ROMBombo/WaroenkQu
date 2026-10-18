@@ -40,10 +40,8 @@ export class CatalogService {
   async getCurrentOrFail(): Promise<CurrentCatalog> {
     const catalog = await this.getCurrent();
     if (!catalog) {
-      throw AppException.serviceUnavailable(
-        ErrorCode.CATALOG_NOT_AVAILABLE,
-        'Katalog belum tersedia, tunggu Catalog Publisher berjalan',
-      );
+      // Katalog belum pernah dipublish ke Redis
+      throw AppException.serviceUnavailable(ErrorCode.CATALOG_NOT_AVAILABLE);
     }
     return catalog;
   }

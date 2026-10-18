@@ -29,7 +29,7 @@ export class AuthService {
     // supaya tidak bisa ditebak username mana yang terdaftar
     const passwordMatches = await compare(password, user?.passwordHash ?? DUMMY_PASSWORD_HASH);
     if (!user || !user.isActive || !passwordMatches) {
-      throw AppException.unauthorized('Username atau password salah');
+      throw AppException.unauthorized();
     }
 
     return this.issueTokens(this.dataSource.manager, await this.toAuthUser(user));
@@ -46,12 +46,12 @@ export class AuthService {
         .getOne();
 
       if (!stored || stored.usedAt || stored.expiresAt <= new Date()) {
-        throw AppException.unauthorized('Refresh token tidak valid, sudah dipakai, atau sudah kedaluwarsa');
+        throw AppException.unauthorized();
       }
       await manager.getRepository(RefreshToken).update(stored.id, { usedAt: new Date() });
 
       const user = await this.findActiveAuthUser(stored.userId, manager);
-      if (!user) throw AppException.unauthorized('User tidak ditemukan atau sudah nonaktif');
+      if (!user) throw AppException.unauthorized();
 
       return this.issueTokens(manager, user);
     });

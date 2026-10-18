@@ -29,7 +29,7 @@ export class JwtAuthGuard implements CanActivate {
 
     const request = context.switchToHttp().getRequest<AuthenticatedRequest>();
     const token = this.extractBearerToken(request.headers.authorization);
-    if (!token) throw AppException.unauthorized('Access token wajib dikirim');
+    if (!token) throw AppException.unauthorized();
 
     let payload: AccessTokenPayload;
     try {
@@ -39,7 +39,7 @@ export class JwtAuthGuard implements CanActivate {
     }
 
     const user = await this.authService.findActiveAuthUser(payload.sub);
-    if (!user) throw AppException.unauthorized('User tidak ditemukan atau sudah nonaktif');
+    if (!user) throw AppException.unauthorized();
 
     request.user = user;
     return true;

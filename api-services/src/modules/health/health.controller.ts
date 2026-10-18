@@ -15,7 +15,7 @@ export class HealthController {
     try {
       await this.dataSource.query('SELECT 1');
     } catch {
-      throw new ServiceUnavailableException('Database tidak bisa diakses');
+      throw new ServiceUnavailableException();
     }
     return { status: 'ok' };
   }
