@@ -1,0 +1,33 @@
+# .env sengaja TIDAK di-ignore: isinya hanya nilai dummy untuk environment lokal/testing,
+# supaya kandidat cukup clone lalu `docker compose up`.
+
+# Node.js (api-services, webapp)
+node_modules/
+dist/
+coverage/
+npm-debug.log*
+*.tsbuildinfo
+
+# SvelteKit (webapp)
+.svelte-kit/
+build/
+
+# Python (catalog-publisher)
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+
+# Go (notification-service)
+/notification-service/bin/
+*.exe
+*.test
+*.out
+
+# IDE / OS
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
