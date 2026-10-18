@@ -9,7 +9,6 @@ import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 import { appValidationPipe } from './common/pipes/validation.pipe';
 import { config } from './config/configuration';
 import { runMigrations, runSqlSeeds } from './database/migrate';
-import { seedUsers } from './database/seed-users';
 
 function setupSwagger(app: INestApplication): void {
   const document = SwaggerModule.createDocument(
@@ -38,7 +37,6 @@ async function bootstrap(): Promise<void> {
   const root = join(__dirname, '..');
   await runMigrations(dataSource, join(root, 'migrations'));
   await runSqlSeeds(dataSource, join(root, 'seeds'));
-  await seedUsers(dataSource);
 
   await app.listen(config.port, '0.0.0.0');
   logger.log(`API Services listening on port ${config.port} (Swagger: /docs)`);

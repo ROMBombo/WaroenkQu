@@ -45,20 +45,4 @@ export const config = {
   catalog: {
     publishIntervalSeconds: positiveNumber('CATALOG_PUBLISH_INTERVAL', 300),
   },
-  seed: {
-    owner: {
-      username: required('SEED_OWNER_USERNAME'),
-      password: required('SEED_OWNER_PASSWORD'),
-    },
-    cashiers: [
-      {
-        username: required('SEED_CASHIER1_USERNAME'),
-        password: required('SEED_CASHIER1_PASSWORD'),
-      },
-      {
-        username: required('SEED_CASHIER2_USERNAME'),
-        password: required('SEED_CASHIER2_PASSWORD'),
-      },
-    ],
-  },
 };
