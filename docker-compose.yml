@@ -3,7 +3,8 @@ name: waroenkqu
 # Urutan start:
 #   postgres, redis, rabbitmq (healthy)
 #     -> api-services (migration + seed selesai -> healthy)
-#       -> catalog-publisher, notification-service, webapp
+#       -> catalog-publisher, notification-service (healthy)
+#         -> webapp
 
 x-common-env: &common-env
   TZ: ${TZ}
@@ -128,9 +129,16 @@ services:
     ports:
       - "${WEBAPP_PORT}:80"
     depends_on:
+      # nginx meneruskan /api ke api-services dan /ws ke notification-service
       api-services:
         condition: service_healthy
-    profiles: ["wip"]
+      notification-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
 
 volumes:
   postgres-data:
