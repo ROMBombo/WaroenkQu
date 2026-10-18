@@ -106,6 +106,11 @@ Setelah Catalog Publisher berjalan, semua produk `PENDING` menjadi `PUBLISHED`.
 
 Satu aplikasi dengan dua role. Setiap user login dengan username dan password, lalu menu yang tampil menyesuaikan role-nya.
 
+- **Teknologi:** SvelteKit (SPA) dengan komponen [shadcn-svelte](https://shadcn-svelte.com) dan Tailwind CSS, disajikan oleh nginx di `http://localhost:8080`.
+- **Akses ke backend:** nginx meneruskan `/api/*` ke API Services dan `/ws` ke Notification Service, jadi webapp dan backend berada di satu origin.
+- **Sesi:** access token yang kedaluwarsa di-refresh otomatis. Kalau refresh gagal, user diarahkan ke halaman login.
+- **Selector untuk automation:** elemen penting punya atribut `data-testid` (misalnya `login-username`, `product-row`, `pos-pay-button`, `notification-bell`).
+
 **Role Owner**
 - Melihat daftar produk, dengan pencarian berdasarkan nama. Setiap produk menampilkan status (Aktif / Nonaktif) dan status publish (Menunggu publish / Sudah publish).
 - Menambah produk.
