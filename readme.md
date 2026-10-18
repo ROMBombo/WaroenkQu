@@ -123,7 +123,7 @@ Setiap kali owner berhasil menambah, mengubah, mengaktifkan, menonaktifkan, atau
 
 > Perubahan berhasil disimpan dan akan berlaku di kasir mulai **dd-mm-yyyy hh:mm:ss** (publish katalog berikutnya).
 
-Waktu tersebut diambil dari field `effective_at` di response API. Pesan ini tidak muncul untuk tambah/kurang stok, karena stok langsung berlaku.
+Waktu tersebut diambil dari field `meta.effective_at` di response API (`null` kalau katalog belum pernah dipublish). Pesan ini tidak muncul untuk tambah/kurang stok, karena stok langsung berlaku.
 
 **Role Kasir**
 - Saat halaman transaksi dibuka, webapp memanggil `GET /v1/catalog` **satu kali**, lalu menyimpan katalog di state. Selama halaman terbuka, form transaksi memakai katalog dari state tersebut.
@@ -143,7 +143,12 @@ Ketentuan umum:
 - Semua endpoint kecuali login dan refresh membutuhkan `access_token` di header `Authorization: Bearer <token>`. API Services mengecek apakah role user punya permission untuk endpoint tersebut (lihat [Data awal role dan permission](#data-awal-role-dan-permission)).
 - Semua waktu memakai zona waktu **UTC+7 (Asia/Jakarta)**. Database menyimpan `TIMESTAMPTZ`, dan API menampilkan waktu dalam UTC+7 (format dd-mm-yyyy hh:mm:ss untuk field yang ditampilkan ke user).
 - Semua endpoint GET yang mengembalikan list memakai pagination.
-- Detail request, response, dan pagination tiap endpoint ada di dokumentasi Swagger.
+- Request dan response memakai JSON dengan nama field snake_case.
+- Response sukses selalu berbentuk `{ "data": ..., "meta": ... }`. `meta` hanya ada di list (info pagination) dan di perubahan produk (`effective_at`).
+- Response error selalu berbentuk `{ "error": { "code", "message", "details" } }`. `details` berisi info tambahan, misalnya daftar field yang tidak valid.
+- Field yang tidak dikenal di body request ditolak dengan `400`, misalnya `stock` di body PUT produk.
+- Field waktu di response memakai format ISO 8601 dengan offset `+07:00`, kecuali `publish-info` yang memakai format tampilan dd-mm-yyyy hh:mm:ss.
+- Detail request, response, dan pagination tiap endpoint ada di dokumentasi Swagger: `http://localhost:3000/docs`.
 
 **/v1/auth/login** (semua role, data dari PostgreSQL)
 - post : login dengan username dan password. Mengembalikan `access_token` (berlaku 30 menit), `refresh_token` (berlaku 7 hari), role, dan permission user
@@ -152,16 +157,16 @@ Ketentuan umum:
 - post : menukar `refresh_token` yang masih berlaku dengan `access_token` dan `refresh_token` baru
 
 **/v1/product-management** (role owner, data dari PostgreSQL)
-- post : menambahkan produk. Body `{ "name", "price", "stock", "min_stock" }`. Produk baru otomatis aktif dengan `publish_status` `PENDING`. Response berisi `effective_at`
+- post : menambahkan produk. Body `{ "name", "price", "stock", "min_stock" }`. Produk baru otomatis aktif dengan `publish_status` `PENDING`. Response berisi `meta.effective_at`
 - get : melihat list produk yang belum dihapus, bisa dicari berdasarkan nama. Setiap produk berisi `is_active` dan `publish_status`
 
 **/v1/product-management/{id}** (role owner, data dari PostgreSQL)
 - get : melihat detail produk
-- put : mengubah produk. Body `{ "name", "price", "min_stock" }`. Response berisi `effective_at`
-- delete : menghapus produk (soft delete). Response berisi `effective_at`
+- put : mengubah produk. Body `{ "name", "price", "min_stock" }`. Response berisi `meta.effective_at`
+- delete : menghapus produk (soft delete). Response berisi `meta.effective_at`
 
 **/v1/product-management/{id}/status** (role owner, data dari PostgreSQL)
-- patch : mengaktifkan atau menonaktifkan produk. Body `{ "is_active": true }` atau `{ "is_active": false }`. Response berisi `effective_at`
+- patch : mengaktifkan atau menonaktifkan produk. Body `{ "is_active": true }` atau `{ "is_active": false }`. Response berisi `meta.effective_at`
 
 **/v1/product-management/{id}/stock-in** (role owner, data dari PostgreSQL)
 - post : menambah stok. Body `{ "quantity": 10, "note": "Restock dari supplier" }` (`note` opsional). Stok baru = stok + quantity
@@ -212,7 +217,7 @@ Ketentuan umum:
 
 | HTTP | Kode | Kapan |
 |------|------|-------|
-| 400 | `VALIDATION_ERROR` | Field wajib kosong, format salah, nilai di luar batas, produk dobel di satu transaksi, uang dibayar kurang dari total |
+| 400 | `VALIDATION_ERROR` | Field wajib kosong, format salah, nilai di luar batas, field tidak dikenal, ID bukan UUID, produk dobel di satu transaksi, uang dibayar kurang dari total |
 | 401 | `UNAUTHORIZED` | Tanpa token, token tidak valid atau kedaluwarsa, user sudah nonaktif, atau login gagal |
 | 403 | `FORBIDDEN` | Role tidak punya permission untuk endpoint tersebut |
 | 404 | `PRODUCT_NOT_FOUND` | Produk tidak ada atau sudah dihapus (endpoint product-management, kecuali `/history` yang tetap bisa diakses untuk produk yang sudah dihapus) |
@@ -222,6 +227,8 @@ Ketentuan umum:
 | 409 | `CATALOG_OUTDATED` | `catalog_publish_id` di request transaksi berbeda dengan katalog di Redis |
 | 422 | `PRODUCT_NOT_IN_CATALOG` | Produk di transaksi tidak ada di katalog Redis |
 | 422 | `INSUFFICIENT_STOCK` | Stok tidak cukup saat transaksi atau saat kurang stok |
+| 404 | `CATALOG_NOT_FOUND` | History katalog dengan ID tersebut tidak ada |
+| 503 | `CATALOG_NOT_AVAILABLE` | Katalog belum ada di Redis (Catalog Publisher belum pernah berjalan) |
 
 #### Outbox worker
 
@@ -656,7 +663,7 @@ Contoh data yang dipakai: katalog yang berlaku adalah **K1**. Interval publish d
 2. Webapp memanggil `POST /v1/product-management`.
 3. API Services memvalidasi data (termasuk nama belum dipakai), lalu `INSERT` ke `products` dengan `is_active = true`, `publish_status = 'PENDING'`.
 4. Trigger menyimpan history `CREATE`.
-5. Response berisi `effective_at`. Webapp menampilkan pesan bahwa produk berlaku di kasir mulai waktu tersebut.
+5. Response berisi `meta.effective_at`. Webapp menampilkan pesan bahwa produk berlaku di kasir mulai waktu tersebut.
 6. Di halaman owner, Teh Pucuk langsung muncul dengan label "Menunggu publish".
 7. Kasir belum bisa menjual Teh Pucuk, karena belum ada di katalog K1.
 8. Catalog Publisher berjalan dan membuat katalog K2 yang berisi Teh Pucuk. `publish_status` Teh Pucuk menjadi `PUBLISHED`.
