@@ -112,9 +112,14 @@ services:
     ports:
       - "${NOTIFICATION_PORT}:3001"
     depends_on:
+      # Schema dibuat oleh migration api-services, jadi harus menunggu api-services healthy
       api-services:
         condition: service_healthy
-    profiles: ["wip"]
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3001/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
 
   webapp:
     build: ./webapp
