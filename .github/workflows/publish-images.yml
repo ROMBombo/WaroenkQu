@@ -1,0 +1,65 @@
+name: Publish images
+
+# Membangun image setiap service (amd64 & arm64) dan mem-publish-nya ke GitHub Container Registry,
+# supaya bisa dijalankan dengan `docker compose pull && docker compose up -d` tanpa build di komputer sendiri.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - api-services/**
+      - catalog-publisher/**
+      - notification-service/**
+      - webapp/**
+      - .github/workflows/publish-images.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: publish-images-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  publish:
+    name: ${{ matrix.service }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        service: [api-services, catalog-publisher, notification-service, webapp]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-qemu-action@v3
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          # Nama image di GHCR harus huruf kecil
+          images: ghcr.io/rombombo/waroenkqu-${{ matrix.service }}
+          tags: |
+            type=raw,value=latest
+            type=sha
+          labels: |
+            org.opencontainers.image.title=waroenkqu-${{ matrix.service }}
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: ./${{ matrix.service }}
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=${{ matrix.service }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.service }}
