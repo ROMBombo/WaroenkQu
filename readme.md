@@ -12,36 +12,68 @@ Semua komponen berjalan di Docker. Tidak perlu menginstal Node.js, Python, Go, P
 
 ### Prasyarat
 
-- **Docker** dengan **Docker Compose v2** (Docker Desktop di Windows/macOS, atau Docker Engine di Linux). Cek dengan `docker compose version`.
-- Port berikut belum dipakai aplikasi lain: `8080`, `3000`, `3001`, `5432`, `6379`, `5672`, `15672`. Kalau ada yang bentrok, ubah port-nya di `.env` (lihat [Konfigurasi](#konfigurasi)).
+- **Sistem operasi:** macOS (Apple Silicon M1/M2/M3/M4 maupun Intel), Linux (misalnya Ubuntu atau Debian), atau Windows 10/11. Semua image tersedia untuk arsitektur `amd64` dan `arm64`.
+- **Docker** dengan **Docker Compose v2** (Docker Desktop di Windows/macOS, atau Docker Engine di Linux). Cek dengan `docker compose version`. Di Windows, Docker Desktop memakai backend WSL 2.
+- **Ruang disk kosong**, sudah termasuk hasil clone repository ini (sekitar 2 MB):
+
+  | Cara menjalankan | Minimal | Disarankan | Keterangan |
+  |------------------|---------|------------|------------|
+  | [Cara 1: image siap pakai](#cara-1-image-siap-pakai-disarankan) | 3 GB | 5 GB | Hanya mengunduh image, sekitar 1,1 GB setelah terpasang |
+  | [Cara 2: build dari source](#cara-2-build-dari-source) | 5 GB | 10 GB | Image tahap build dan build cache menambah sekitar 2 GB saat build; bisa dikosongkan lagi setelahnya (lihat [Hemat ruang disk](#hemat-ruang-disk)) |
+
+  Di Docker Desktop, pastikan juga batas disk di **Settings → Resources** masih cukup.
+- **RAM untuk Docker minimal 2 GB** untuk Cara 1, atau **4 GB** untuk Cara 2 (Docker Desktop: **Settings → Resources → Memory**). Saat berjalan, semua service hanya memakai sekitar 300 MB; proses build butuh lebih banyak.
+- Port berikut belum dipakai aplikasi lain: `28080`, `28300`, `28301`, `28432`, `28379`, `28672`, `28673`. Port ini sengaja dipilih di luar port yang umum dipakai supaya tidak bentrok dengan aplikasi lain di komputer Anda. Kalau masih ada yang bentrok, ubah port-nya di `.env` (lihat [Konfigurasi](#konfigurasi)).
 
 ### Langkah
+
+Clone repository terlebih dulu. Repository berisi `docker-compose.yml`, `.env`, dan konfigurasi yang dibutuhkan kedua cara di bawah.
 
 ```bash
 git clone https://github.com/ROMBombo/WaroenkQu.git
 cd WaroenkQu
+```
+
+Lalu pilih **salah satu** cara berikut.
+
+#### Cara 1: Image siap pakai (disarankan)
+
+Image setiap service sudah dibangun otomatis dari branch `main` dan tersedia di GitHub Container Registry (`ghcr.io/rombombo/waroenkqu-*`). Tidak ada proses build di komputer Anda, jadi lebih cepat dan lebih hemat disk.
+
+```bash
+docker compose pull
+docker compose up -d
+```
+
+#### Cara 2: Build dari source
+
+Semua image dibangun di komputer Anda dari source di repository ini. Build pertama butuh beberapa menit. Pakai cara ini kalau tidak bisa mengakses `ghcr.io` atau ingin menjalankan perubahan kode sendiri.
+
+```bash
 docker compose up -d --build
 ```
 
-Build pertama butuh beberapa menit karena semua image dibuat dari source. Cek status sampai semua service `healthy` (`catalog-publisher` cukup `Up`):
+#### Cek status
+
+Cek status sampai semua service `healthy` (`catalog-publisher` cukup `Up`):
 
 ```bash
 docker compose ps
 ```
 
-Urutan start diatur otomatis: PostgreSQL, Redis, RabbitMQ → API Services (menjalankan migration & seed) → Catalog Publisher & Notification Service → Webapp. Setelah semuanya jalan, buka **http://localhost:8080**.
+Urutan start diatur otomatis: PostgreSQL, Redis, RabbitMQ → API Services (menjalankan migration & seed) → Catalog Publisher & Notification Service → Webapp. Setelah semuanya jalan, buka **http://localhost:28080**.
 
 ### Alamat layanan
 
 | Layanan | Alamat | Keterangan |
 |---------|--------|------------|
-| Webapp | http://localhost:8080 | Aplikasi owner & kasir |
-| API Services | http://localhost:3000 | REST API (`/v1/...`) |
-| Swagger | http://localhost:3000/docs | Dokumentasi & uji coba API |
-| Notification Service | ws://localhost:3001/ws | WebSocket notifikasi (lihat [WebSocket](#websocket)) |
-| RabbitMQ Management | http://localhost:15672 | Login `waroenkqu` / `waroenkqu_local` |
-| PostgreSQL | `localhost:5432` | Database `waroenkqu`, user `waroenkqu`, password `waroenkqu_local` |
-| Redis | `localhost:6379` | Key `catalog:current` |
+| Webapp | http://localhost:28080 | Aplikasi owner & kasir |
+| API Services | http://localhost:28300 | REST API (`/v1/...`) |
+| Swagger | http://localhost:28300/docs | Dokumentasi & uji coba API |
+| Notification Service | ws://localhost:28301/ws | WebSocket notifikasi (lihat [WebSocket](#websocket)) |
+| RabbitMQ Management | http://localhost:28673 | Login `waroenkqu` / `waroenkqu_local` |
+| PostgreSQL | `localhost:28432` | Database `waroenkqu`, user `waroenkqu`, password `waroenkqu_local` |
+| Redis | `localhost:28379` | Key `catalog:current` |
 
 ### Akun
 
@@ -65,7 +97,7 @@ Semua konfigurasi ada di file `.env` di root repo. File ini sengaja ikut di-comm
 | `JWT_ACCESS_EXPIRES_IN` | `30m` | Masa berlaku access token |
 | `JWT_REFRESH_EXPIRES_IN` | `7d` | Masa berlaku refresh token |
 | `OUTBOX_POLL_INTERVAL` | `1` | Interval outbox worker mengecek pesan yang belum terkirim (detik) |
-| `WEBAPP_PORT`, `API_PORT`, `NOTIFICATION_PORT`, `POSTGRES_PORT`, `REDIS_PORT`, `RABBITMQ_PORT`, `RABBITMQ_MANAGEMENT_PORT` | lihat `.env` | Port di komputer host |
+| `HOST_WEBAPP_PORT`, `HOST_API_PORT`, `HOST_NOTIFICATION_PORT`, `HOST_POSTGRES_PORT`, `HOST_REDIS_PORT`, `HOST_RABBITMQ_PORT`, `HOST_RABBITMQ_MANAGEMENT_PORT` | lihat `.env` | Port di komputer host. Antar container di jaringan Docker tetap memakai port bawaan (misalnya `postgres:5432`, `api-services:3000`) |
 
 Setelah mengubah `.env`, jalankan lagi `docker compose up -d`. Compose hanya membuat ulang container yang konfigurasinya berubah.
 
@@ -80,12 +112,26 @@ Setelah mengubah `.env`, jalankan lagi `docker compose up -d`. Compose hanya mem
 | Menghentikan semua (data tetap ada) | `docker compose down` |
 | **Reset semua data** (database, Redis, RabbitMQ) | `docker compose down -v` lalu `docker compose up -d` |
 | Build ulang setelah mengubah kode | `docker compose up -d --build` |
+| Memperbarui image siap pakai ke versi terbaru | `docker compose pull` lalu `docker compose up -d` |
 
 ### Troubleshooting
 
-- **Port sudah dipakai** (`bind: address already in use`): ubah port terkait di `.env`, lalu `docker compose up -d`.
+- **Port sudah dipakai** (`bind: address already in use`): ubah port `HOST_*_PORT` terkait di `.env`, lalu `docker compose up -d`.
 - **Service tidak pernah `healthy`**: lihat penyebabnya dengan `docker compose logs <nama-service>`. Kalau migration gagal, API Services berhenti dan service lain tidak ikut start.
+- **Log sebuah service kosong** (misalnya `api-services`): service itu belum pernah start karena masih menunggu dependency-nya `healthy`. Cek status semua container dengan `docker compose ps -a`, lalu lihat log service yang `Exited` atau `unhealthy` (biasanya `postgres`, `redis`, atau `rabbitmq`).
+- **Disk Docker penuh** (gejalanya: build gagal, atau PostgreSQL/RabbitMQ berhenti sendiri): cek dengan `docker system df`, lalu kosongkan ruang (lihat [Hemat ruang disk](#hemat-ruang-disk)). Di Docker Desktop, batas disk bisa dilihat di **Settings → Resources**.
 - **Data ingin dikembalikan ke kondisi awal**: `docker compose down -v`, lalu `docker compose up -d`.
+
+### Hemat ruang disk
+
+Total image yang dipakai WaroenkQu sekitar 1 GB. Kalau memakai [Cara 2](#cara-2-build-dari-source), Docker juga mengunduh image untuk tahap build (Node.js dan Go) dan menyimpan build cache. Keduanya tidak dibutuhkan lagi setelah build selesai.
+
+| Kebutuhan | Perintah |
+|-----------|----------|
+| Melihat pemakaian disk Docker | `docker system df` |
+| Menghapus build cache semua project Docker (aman, hanya membuat build berikutnya lebih lama) | `docker builder prune -f` |
+| Menghapus image tahap build (kalau tidak dipakai project lain) | `docker image rm node:22-alpine golang:1.23-alpine` |
+| Menghapus semua WaroenkQu (container, data, dan image) setelah selesai | `docker compose down -v --rmi all` |
 
 ### Aturan pengembangan
 
@@ -99,7 +145,7 @@ Setelah mengubah `.env`, jalankan lagi `docker compose up -d`. Compose hanya mem
 
 ### Lewat webapp
 
-Buka http://localhost:8080 lalu login dengan salah satu [akun](#akun).
+Buka http://localhost:28080 lalu login dengan salah satu [akun](#akun).
 
 **Sebagai owner** (`owner` / `owner123`):
 1. **Produk → Tambah produk.** Isi nama, harga, stok awal, dan stok minimum. Produk tampil dengan label **Menunggu publish** dan baru bisa dijual kasir setelah publish katalog berikutnya. Waktunya ditampilkan di pesan setelah menyimpan.
@@ -130,7 +176,7 @@ Perubahan produk baru berlaku setelah publish katalog, yang terjadi setiap `CATA
 
 ### Lewat API (Swagger)
 
-1. Buka http://localhost:3000/docs.
+1. Buka http://localhost:28300/docs.
 2. Jalankan `POST /v1/auth/login` dengan body `{ "username": "owner", "password": "owner123" }`, lalu salin `data.access_token` dari response.
 3. Klik **Authorize**, tempel access token, lalu endpoint lain bisa dicoba langsung.
 
@@ -138,18 +184,18 @@ Contoh dengan curl:
 
 ```bash
 # Login
-curl -s -X POST http://localhost:3000/v1/auth/login \
+curl -s -X POST http://localhost:28300/v1/auth/login \
   -H "Content-Type: application/json" \
   -d '{"username":"owner","password":"owner123"}'
 
 # Panggil endpoint dengan access token dari response login
-curl -s http://localhost:3000/v1/product-management \
+curl -s http://localhost:28300/v1/product-management \
   -H "Authorization: Bearer <access_token>"
 ```
 
 ### Lewat WebSocket
 
-Hubungkan client WebSocket ke `ws://localhost:3001/ws?access_token=<access_token owner>`. Setiap kali ada notifikasi stok menipis baru, server mengirim event `notification.created`. Format event dan aturan koneksinya ada di bagian [WebSocket](#websocket).
+Hubungkan client WebSocket ke `ws://localhost:28301/ws?access_token=<access_token owner>`. Setiap kali ada notifikasi stok menipis baru, server mengirim event `notification.created`. Format event dan aturan koneksinya ada di bagian [WebSocket](#websocket).
 
 ### Melihat data di balik layar
 
@@ -262,7 +308,7 @@ Setelah Catalog Publisher berjalan, semua produk `PENDING` menjadi `PUBLISHED`.
 
 Satu aplikasi dengan dua role. Setiap user login dengan username dan password, lalu menu yang tampil menyesuaikan role-nya.
 
-- **Teknologi:** SvelteKit (SPA) dengan komponen [shadcn-svelte](https://shadcn-svelte.com) dan Tailwind CSS, disajikan oleh nginx di `http://localhost:8080`.
+- **Teknologi:** SvelteKit (SPA) dengan komponen [shadcn-svelte](https://shadcn-svelte.com) dan Tailwind CSS, disajikan oleh nginx di `http://localhost:28080`.
 - **Akses ke backend:** nginx meneruskan `/api/*` ke API Services dan `/ws` ke Notification Service, jadi webapp dan backend berada di satu origin.
 - **Sesi:** access token yang kedaluwarsa di-refresh otomatis. Kalau refresh gagal, user diarahkan ke halaman login.
 - **Selector untuk automation:** elemen penting punya atribut `data-testid` (misalnya `login-username`, `product-row`, `pos-pay-button`, `notification-bell`).
@@ -310,7 +356,7 @@ Ketentuan umum:
 - Untuk status 401, 403, 500, dan 503, serta error dari framework (JSON rusak, route tidak ada, body terlalu besar), `message` selalu teks standar HTTP (`Unauthorized`, `Forbidden`, `Internal Server Error`, `Service Unavailable`, dst.) tanpa `details`. Alasan detailnya sengaja tidak dikirim ke client. `code` tetap menunjukkan jenis error-nya.
 - Field yang tidak dikenal di body request ditolak dengan `400`, misalnya `stock` di body PUT produk.
 - Field waktu di response memakai format ISO 8601 dengan offset `+07:00`, kecuali `publish-info` yang memakai format tampilan dd-mm-yyyy hh:mm:ss.
-- Detail request, response, dan pagination tiap endpoint ada di dokumentasi Swagger: `http://localhost:3000/docs`.
+- Detail request, response, dan pagination tiap endpoint ada di dokumentasi Swagger: `http://localhost:28300/docs`.
 
 **/v1/auth/login** (semua role, data dari PostgreSQL)
 - post : login dengan username dan password. Mengembalikan `access_token` (berlaku 30 menit), `refresh_token` (berlaku 7 hari), role, dan permission user
@@ -726,7 +772,7 @@ Kalau owner sedang tidak membuka webapp, notifikasi tetap tersimpan dan akan mun
 
 #### WebSocket
 
-- **URL:** `ws://localhost:3001/ws?access_token=<access_token>`. Browser tidak bisa mengirim header `Authorization` saat membuka WebSocket, jadi token dikirim lewat query param.
+- **URL:** `ws://localhost:28301/ws?access_token=<access_token>`. Browser tidak bisa mengirim header `Authorization` saat membuka WebSocket, jadi token dikirim lewat query param.
 - **Autentikasi:** token diverifikasi sebelum koneksi dibuka. User harus aktif dan role-nya punya permission `notification:read` (hanya owner).
 
   | Kondisi | Response |
