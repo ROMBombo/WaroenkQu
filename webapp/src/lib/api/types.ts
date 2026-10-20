@@ -1,4 +1,4 @@
-// Bentuk data sesuai response API Services (lihat Swagger di http://localhost:3000/docs).
+// Bentuk data sesuai response API Services (lihat Swagger di http://localhost:28300/docs).
 
 export type RoleCode = 'OWNER' | 'CASHIER';
 export type PublishStatus = 'PENDING' | 'PUBLISHED';

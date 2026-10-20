@@ -7,8 +7,8 @@ export default defineConfig({
   // Saat `npm run dev`, path yang sama dengan nginx (lihat nginx.conf) diteruskan ke backend di Docker
   server: {
     proxy: {
-      '/api': { target: 'http://localhost:3000', rewrite: (path) => path.replace(/^\/api/, '') },
-      '/ws': { target: 'ws://localhost:3001', ws: true },
+      '/api': { target: 'http://localhost:28300', rewrite: (path) => path.replace(/^\/api/, '') },
+      '/ws': { target: 'ws://localhost:28301', ws: true },
     },
   },
 });

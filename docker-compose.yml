@@ -1,11 +1,18 @@
 name: waroenkqu
 
+# Dua cara menjalankan (lihat readme "Cara Menjalankan"):
+#   1. Image siap pakai dari GHCR: docker compose pull && docker compose up -d
+#   2. Build sendiri dari source:  docker compose up -d --build
+# Image GHCR dibangun otomatis oleh .github/workflows/publish-images.yml dari branch main.
+
 # Urutan start:
 #   postgres, redis, rabbitmq (healthy)
 #     -> api-services (migration + seed selesai -> healthy)
 #       -> catalog-publisher, notification-service (healthy)
 #         -> webapp
 
+# Port di sini adalah port di dalam jaringan Docker (antar container).
+# Port untuk akses dari komputer host diatur lewat HOST_*_PORT di .env (bagian "ports").
 x-common-env: &common-env
   TZ: ${TZ}
   POSTGRES_HOST: postgres
@@ -27,7 +34,7 @@ services:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     ports:
-      - "${POSTGRES_PORT}:5432"
+      - "${HOST_POSTGRES_PORT}:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
     healthcheck:
@@ -35,13 +42,17 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+      start_period: 30s
 
   redis:
     image: redis:7-alpine
+    # Di sebagian mesin ARM (misalnya Docker Desktop di Mac Apple Silicon) Redis bisa berhenti saat start
+    # karena peringatan ARM64-COW-BUG. Isi Redis hanya salinan katalog yang selalu dibuat ulang, jadi aman diabaikan.
+    command: ["redis-server", "--ignore-warnings", "ARM64-COW-BUG"]
     environment:
       TZ: ${TZ}
     ports:
-      - "${REDIS_PORT}:6379"
+      - "${HOST_REDIS_PORT}:6379"
     volumes:
       - redis-data:/data
     healthcheck:
@@ -49,25 +60,39 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+      start_period: 30s
 
   rabbitmq:
-    image: rabbitmq:3.13-management-alpine
+    # Tanpa tag "management" supaya image lebih kecil; UI management diaktifkan lewat enabled_plugins
+    image: rabbitmq:3.13-alpine
     environment:
       TZ: ${TZ}
       RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER}
       RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD}
     ports:
-      - "${RABBITMQ_PORT}:5672"
-      - "${RABBITMQ_MANAGEMENT_PORT}:15672"
+      - "${HOST_RABBITMQ_PORT}:5672"
+      - "${HOST_RABBITMQ_MANAGEMENT_PORT}:15672"
     volumes:
       - rabbitmq-data:/var/lib/rabbitmq
+      - ./rabbitmq/enabled_plugins:/etc/rabbitmq/enabled_plugins:ro
+      - ./rabbitmq/management.conf:/etc/rabbitmq/conf.d/20-management_agent.disable_metrics_collector.conf:ro
+    # Batas file descriptor yang sangat besar (bawaan sebagian Docker Desktop) membuat Erlang lambat start dan boros memori
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
     healthcheck:
-      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      # Cukup cek port AMQP (baru terbuka setelah RabbitMQ selesai boot). Jangan pakai rabbitmq-diagnostics:
+      # CLI itu jalan sebagai root dan bisa membuat .erlang.cookie milik root sebelum RabbitMQ siap,
+      # sehingga RabbitMQ gagal start di mesin yang lambat.
+      test: ["CMD", "nc", "-z", "127.0.0.1", "5672"]
       interval: 10s
       timeout: 10s
       retries: 10
+      start_period: 60s
 
   api-services:
+    image: ghcr.io/rombombo/waroenkqu-api-services:latest
     build: ./api-services
     environment:
       <<: *common-env
@@ -78,7 +103,7 @@ services:
       OUTBOX_POLL_INTERVAL: ${OUTBOX_POLL_INTERVAL}
       CATALOG_PUBLISH_INTERVAL: ${CATALOG_PUBLISH_INTERVAL}
     ports:
-      - "${API_PORT}:3000"
+      - "${HOST_API_PORT}:3000"
     depends_on:
       postgres:
         condition: service_healthy
@@ -92,9 +117,10 @@ services:
       interval: 5s
       timeout: 5s
       retries: 20
-      start_period: 10s
+      start_period: 60s
 
   catalog-publisher:
+    image: ghcr.io/rombombo/waroenkqu-catalog-publisher:latest
     build: ./catalog-publisher
     environment:
       <<: *common-env
@@ -105,13 +131,14 @@ services:
         condition: service_healthy
 
   notification-service:
+    image: ghcr.io/rombombo/waroenkqu-notification-service:latest
     build: ./notification-service
     environment:
       <<: *common-env
       PORT: 3001
       JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET}
     ports:
-      - "${NOTIFICATION_PORT}:3001"
+      - "${HOST_NOTIFICATION_PORT}:3001"
     depends_on:
       # Schema dibuat oleh migration api-services, jadi harus menunggu api-services healthy
       api-services:
@@ -121,13 +148,15 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+      start_period: 30s
 
   webapp:
+    image: ghcr.io/rombombo/waroenkqu-webapp:latest
     build: ./webapp
     environment:
       TZ: ${TZ}
     ports:
-      - "${WEBAPP_PORT}:80"
+      - "${HOST_WEBAPP_PORT}:80"
     depends_on:
       # nginx meneruskan /api ke api-services dan /ws ke notification-service
       api-services:
@@ -139,6 +168,7 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+      start_period: 30s
 
 volumes:
   postgres-data:
